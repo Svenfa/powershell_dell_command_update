@@ -106,6 +106,17 @@ $BLinfo = Get-Bitlockervolume -MountPoint $env:SystemDrive
 $bitlockerStatus=$($blinfo.ProtectionStatus)
 
 # Check if BIOS-Password is set
-$CheckBIOSPassword= Start-Process $DellCommandConfigureExePath -wait -PassThru -ArgumentList "--setuppwd=","--valsetuppwd $BIOSPassword"
+$CheckBIOSPassword=Start-Process $DellCommandConfigureExePath -wait -PassThru -ArgumentList "--setuppwd= --valsetuppwd $BIOSPassword"
+switch ($CheckBIOSPassword.ExitCode) {
+    0 { 
+        $BIOSPasswordSet = $true
+    }
+    157 { 
+        $BIOSPasswordSet = $true
+        endscript 11005
+    }
+    240 { 
+        $BIOSPasswordSet = $false
+    }
 
-Write-Output $CheckBIOSPassword
+}

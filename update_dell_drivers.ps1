@@ -7,17 +7,25 @@
 # e.g.: .\update_dell_drivers.ps1 -debug 1
 param (
     [int]$debug = 1,
-    [string]$OutputFileLocation = "$env:Temp\update_dell_drivers_$(get-date -f yyyy.MM.dd-H.m).log"
+    [string]$OutputFileLocation = "$env:Temp\update_dell_drivers_$(get-date -f yyyy.MM.dd-H.m).log",
+    [string]$BIOSPassword = "secret"
 )
+
+
+# Environmentvariables:
+# Path to dcu-cli.exe file. 
+$DellCommandUpdateExePath = "C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe"
+$DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X86_64\cctk.exe"
+
 
 # ---- Exit Codes ----
 # Setup-routines will exit with their own exit-codes.
 # Define some custom exit-codes for this script.
 #11000 = "This script ran not on a Dell system - exited without any action"
 #11001 = "Dell Command | Update software not found - exited without any action"
-#11002 = ""
-#11003 = ""
-#11004 = ""
+#11002 = "Dell Command | Update software found but .exe could not be found in defined Path $DellCommandUpdateExePath"
+#11003 = "Dell Command | Configure software not found - exited without any action"
+#11004 = "Dell Command | Configure software found but .exe could not be found in defined Path $DellCommandConfigureExePath"
 #11005 = ""
 #11006 = ""
 #11010 = ""
@@ -40,20 +48,6 @@ if ($DebugMessages -eq "1") {
     Start-Transcript -path $OutputFileLocation -append
 }
 
-# ------------------------------------------------------- End definition of environment ---------------------------------------------------
-
-# -------------------------------------------------------- Lets take a look around --------------------------------------------------------
-
-# Check if this is a Dell system:
-if (Get-WmiObject win32_SystemEnclosure -Filter: "Manufacturer LIKE 'Dell Inc.'") { $isDellSystem = $true } else { $isDellSystem = $False }
-
-# Check if 'Dell Command | Update' is installed:
-Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "*Dell Command | Update*"} | ForEach-Object -process { $isDellCommandUpdateInstalled = $true }
-
-# Check if Bitlocker is enabled on Systemdrive:
-$BLinfo = Get-Bitlockervolume -MountPoint $env:SystemDrive 
-$bitlockerStatus=$($blinfo.ProtectionStatus)
-
 
 # --------------------------------------------------------------- Functions --------------------------------------------------------------
 
@@ -67,9 +61,51 @@ function endscript($exitcode, $msg) {
     exit $exitcode
 }
 
+# ------------------------------------------------------- End definition of environment ---------------------------------------------------
 
-# -------------------------- Tasks --------------------------
-if ($isDellSystem -eq $true) { 
+# -------------------------------------------------------- Check for Dell-environment -----------------------------------------------------
+
+# Check if this is a Dell system:
+if (Get-WmiObject win32_SystemEnclosure -Filter: "Manufacturer LIKE 'Dell Inc.'") { 
+    $isDellSystem = $true 
+    } else { 
     $manufacturer = $(Get-WmiObject win32_SystemEnclosure | Select-Object Manufacturer)
     endscript 11000 "This system could not be indentified as Dell system - Found manufacturer: $manufacturer" 
 }
+
+# Check if 'Dell Command | Update' is installed:
+Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "*Dell Command | Update*"} | ForEach-Object -process { $isDellCommandUpdateInstalled = $true }
+if ($isDellCommandUpdateInstalled -eq $false) {
+    endscript 11001 "Dell Command | Update software not found - exited without any action"
+}
+
+# Check if the Dell Command | Update command-line exe-file exists:
+if (Test-Path $DellCommandUpdateExePath) {
+    $foundDellCommandUpdateExe = $true
+} else {
+    endscript 11002 "Dell Command | Update software found but .exe could not be found in defined Path $DellCommandUpdateExePath"
+}
+
+# Check if 'Dell Command | Configure' is installed:
+Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "*Dell Command | Configure*"} | ForEach-Object -process { $isDellCommandConfigureInstalled = $true }
+if ($isDellCommandConfigureInstalled -eq $false) {
+    endscript 11003 "Dell Command | Configure software not found - exited without any action"
+}
+
+# Check if the Dell Command | Configure command-line exe-file exists:
+if (Test-Path $DellCommandConfigureExePath) {
+    $foundDellCommandConfigureExe = $true
+} else {
+    endscript 11004 "Dell Command | Configure software found but .exe could not be found in defined Path $DellCommandConfigureExePath"
+}
+
+# -------------------------------------------------------- Check security-settings --------------------------------------------------------
+
+# Check if Bitlocker is enabled on Systemdrive:
+$BLinfo = Get-Bitlockervolume -MountPoint $env:SystemDrive 
+$bitlockerStatus=$($blinfo.ProtectionStatus)
+
+# Check if BIOS-Password is set
+$CheckBIOSPassword= Start-Process $DellCommandConfigureExePath -wait -PassThru -ArgumentList "--setuppwd=","--valsetuppwd $BIOSPassword"
+
+Write-Output $CheckBIOSPassword

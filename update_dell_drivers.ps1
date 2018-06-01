@@ -4,7 +4,7 @@
 # ------------------------------------------------------- Define environment -------------------------------------------------------
 # Param has to be the first line!
 # Defines the parameters which are given by calling this script:
-# e.g.: .\check_previous_Versions.ps1 -software "7-Zip" -version "16.01" -uninstall "yes" -debug 1
+# e.g.: .\update_dell_drivers.ps1 -debug 1
 param (
     [int]$debug = 1,
     [string]$OutputFileLocation = "$env:Temp\update_dell_drivers_$(get-date -f yyyy.MM.dd-H.m).log"
@@ -13,19 +13,17 @@ param (
 # ---- Exit Codes ----
 # Setup-routines will exit with their own exit-codes.
 # Define some custom exit-codes for this script.
-#   11000 | Dell Command | Update software not found - exited without any action
-#   11001 | Undefined error
-#   11002 | 
-#   11003 | 
-#	11004 | 
-#	11005 | 
-#	11006 | 
-#   11010 | 
+#11000 = "This script ran not on a Dell system - exited without any action"
+#11001 = "Dell Command | Update software not found - exited without any action"
+#11002 = ""
+#11003 = ""
+#11004 = ""
+#11005 = ""
+#11006 = ""
+#11010 = ""
 
 
-
-
-# ---- Debugging ----
+# ----------------------------------------------------------------- Debugging -------------------------------------------------------------
 # Enable debugging (1) or disable (0)
 # Powershelldebugging:
 Set-PSDebug -Trace 0
@@ -61,14 +59,17 @@ $bitlockerStatus=$($blinfo.ProtectionStatus)
 
 # End this script with message and errorlevel
 # call this function with "endscript errormessage errorlevel" 
-# e.g.: "endscript "The cake is a lie" 2"
-function endscript($msg, $exitcode) {
+# e.g.: "endscript 2 "The cake is a lie""
+function endscript($exitcode, $msg) {
     # Debug info:
-    if ($DebugMessages -eq "1") {Write-Host "$msg"}
+    if ($DebugMessages -eq "1") {Write-Host $msg }
     if ($DebugMessages -eq "1") {Stop-Transcript}
     exit $exitcode
 }
 
 
 # -------------------------- Tasks --------------------------
-if ($isDellSystem -eq $true) { endscript "The cake is a lie" 2 }
+if ($isDellSystem -eq $true) { 
+    $manufacturer = $(Get-WmiObject win32_SystemEnclosure | Select-Object Manufacturer)
+    endscript 11000 "This system could not be indentified as Dell system - Found manufacturer: $manufacturer" 
+}

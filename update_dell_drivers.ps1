@@ -1,5 +1,5 @@
 # Written by Sven Falk - began first of june 2018
-# Description: This script will search for the program 'Dell Command | Update' and if found, will use it to
+# Description: This script will search for the programs 'Dell Command | Update' and 'Dell Command | Control'. If found it will use them to
 # update all available drivers. This will include BIOS and Firmware-Settings, which requires temporary disabled bitlocker and BIOS-Passwords.
 # ------------------------------------------------------- Define environment -------------------------------------------------------
 # Param has to be the first line!
@@ -8,12 +8,12 @@
 param (
     [int]$debug = 1,
     [string]$OutputFileLocation = "$env:Temp\update_dell_drivers_$(get-date -f yyyy.MM.dd-H.m).log",
-    [string]$BIOSPassword = "secret"
+    [string]$BIO1SPassword = "secret"
 )
 
 
 # Environmentvariables:
-# Path to dcu-cli.exe file. 
+# Path to .exe files. 
 $DellCommandUpdateExePath = "C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe"
 $DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X86_64\cctk.exe"
 
@@ -26,8 +26,8 @@ $DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X8
 #11002 = "Dell Command | Update software found but .exe could not be found in defined Path $DellCommandUpdateExePath"
 #11003 = "Dell Command | Configure software not found - exited without any action"
 #11004 = "Dell Command | Configure software found but .exe could not be found in defined Path $DellCommandConfigureExePath"
-#11005 = ""
-#11006 = ""
+#11005 = "BIOS is password protected but this script got the wrong password. Exiting now without actions."
+#11006 = "Bitlocker is activated and could not be paused."
 #11010 = ""
 
 
@@ -53,13 +53,21 @@ if ($DebugMessages -eq "1") {
 
 # End this script with message and errorlevel
 # call this function with "endscript errormessage errorlevel" 
-# e.g.: "endscript 2 "The cake is a lie""
+# e.g.: endscript 2 "The cake is a lie"
 function endscript($exitcode, $msg) {
     # Debug info:
-    if ($DebugMessages -eq "1") {Write-Host $msg }
+    debugmsg "$(get-date -f yyyy.MM.dd_H:m) - $msg"
     if ($DebugMessages -eq "1") {Stop-Transcript}
     exit $exitcode
 }
+
+# This function is just for better readability of this script
+# Call it to give output to console and logfile
+# e.g.: debugmsg "This variable contains: $($CheckBIOSPassword.ExitCode)"
+function debugmsg($dmsg) {
+    if ($DebugMessages -eq "1") {Write-Host $dmsg}
+}
+
 
 # ------------------------------------------------------- End definition of environment ---------------------------------------------------
 
@@ -103,20 +111,49 @@ if (Test-Path $DellCommandConfigureExePath) {
 
 # Check if Bitlocker is enabled on Systemdrive:
 $BLinfo = Get-Bitlockervolume -MountPoint $env:SystemDrive 
-$bitlockerStatus=$($blinfo.ProtectionStatus)
+$bitlockerStatus=$($BLinfo.ProtectionStatus)
 
 # Check if BIOS-Password is set
 $CheckBIOSPassword=Start-Process $DellCommandConfigureExePath -wait -PassThru -ArgumentList "--setuppwd= --valsetuppwd $BIOSPassword"
-switch ($CheckBIOSPassword.ExitCode) {
-    0 { 
-        $BIOSPasswordSet = $true
-    }
-    157 { 
-        $BIOSPasswordSet = $true
-        endscript 11005
-    }
-    240 { 
-        $BIOSPasswordSet = $false
+
+    switch ($CheckBIOSPassword.ExitCode) {
+        0 { 
+            $BIOSPasswordSet = $true
+            debugmsg "Found and removed BIOS-password successfully."
+        }
+        157 { 
+            endscript 11005 "BIOS is password protected but this script got the wrong password. Exiting now without actions."
+        }
+        240 { 
+            $BIOSPasswordSet = $false
+            debugmsg "No BIOS-password was set."
+        }
     }
 
+# --------------------------------------------------------------------------- Do Stuff
+# Pause bitlocker if enabled
+if( $bitlockerStatus -eq "On") {
+    debugmsg "Bitlocker is activated - pausing it until next reboot."
+    $BLpause=Start-Process $env:SystemDrive\Windows\System32\manage-bde.exe -wait -PassThru -ArgumentList "-protectors -disable $env:SystemDrive"
+    $bitlockerPause = $($BLpause.ExitCode)
+        if( $bitlockerPause -eq 0) {
+            debugmsg "Bitlocker paused successfully for drive $($env:SystemDrive)"
+            } else {
+            endscript 11006 "Bitlocker is activated and could not be paused."
+            }
 }
+
+
+# Import .xml settings file
+#start /wait "C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe" /import /policy C:\ProgramData\Dell\CommandUpdate\MySettings.xml
+#if %ERRORLEVEL% == 0 goto RUNDCUelse goto QUITTASK
+#:RUNDCU
+#"C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe" /log C:\ProgramData\Dell\DCU.log/silent
+#:QUITTASK
+#exit /b %ERRORLEVEL%
+
+
+# start patch-process
+# re-set bios-password if it was enabled before
+# give returncode to empirum agent
+# insert all the debug-messages (debugmsg)

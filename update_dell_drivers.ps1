@@ -8,7 +8,7 @@
 param (
     [int]$debug = 1,
     [string]$OutputFileLocation = "$env:Temp\update_dell_drivers_$(get-date -f yyyy.MM.dd-H.m).log",
-    [string]$BIO1SPassword = "secret"
+    [string]$BIOSPassword = "secret"
 )
 
 
@@ -21,6 +21,7 @@ $DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X8
 # ---- Exit Codes ----
 # Setup-routines will exit with their own exit-codes.
 # Define some custom exit-codes for this script.
+#    0 = "Successfully patched this system."
 #11000 = "This script ran not on a Dell system - exited without any action"
 #11001 = "Dell Command | Update software not found - exited without any action"
 #11002 = "Dell Command | Update software found but .exe could not be found in defined Path $DellCommandUpdateExePath"
@@ -28,8 +29,9 @@ $DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X8
 #11004 = "Dell Command | Configure software found but .exe could not be found in defined Path $DellCommandConfigureExePath"
 #11005 = "BIOS is password protected but this script got the wrong password. Exiting now without actions."
 #11006 = "Bitlocker is activated and could not be paused."
-#11010 = ""
-
+#11007 = "Dell Command Update could not import settings-xml-file"
+#11100 = ""
+#11020 = "Could not re-set the BIOS-password. Please check the client!"
 
 # ----------------------------------------------------------------- Debugging -------------------------------------------------------------
 # Enable debugging (1) or disable (0)
@@ -56,7 +58,8 @@ if ($DebugMessages -eq "1") {
 # e.g.: endscript 2 "The cake is a lie"
 function endscript($exitcode, $msg) {
     # Debug info:
-    debugmsg "$(get-date -f yyyy.MM.dd_H:m) - $msg"
+    debugmsg $msg
+    resetSettings
     if ($DebugMessages -eq "1") {Stop-Transcript}
     exit $exitcode
 }
@@ -65,8 +68,23 @@ function endscript($exitcode, $msg) {
 # Call it to give output to console and logfile
 # e.g.: debugmsg "This variable contains: $($CheckBIOSPassword.ExitCode)"
 function debugmsg($dmsg) {
-    if ($DebugMessages -eq "1") {Write-Host $dmsg}
+    if ($DebugMessages -eq "1") {Write-Host "$(get-date -f yyyy.MM.dd_H:m:s) - $dmsg"}
 }
+
+# Reset the settings back to the way they were before this script ran:
+function resetSettings {
+    if ( $BIOSPasswordSet -eq $true ) {
+        debugmsg "BIOS-password was set before. Setting it again."
+        $setBIOSPassword=Start-Process $DellCommandConfigureExePath -wait -PassThru -ArgumentList "--setuppwd=$BIOSPassword"
+        if ( $setBIOSPassword.ExitCode -eq "0" ) {
+            debugmsg "Set BIOS-password successfully back to previous value."
+        } else {
+            endscript 11020 "Could not re-set the BIOS-password. Please check the client!"
+        }
+    }
+}
+
+
 
 
 # ------------------------------------------------------- End definition of environment ---------------------------------------------------
@@ -116,6 +134,7 @@ $bitlockerStatus=$($BLinfo.ProtectionStatus)
 # Check if BIOS-Password is set
 $CheckBIOSPassword=Start-Process $DellCommandConfigureExePath -wait -PassThru -ArgumentList "--setuppwd= --valsetuppwd $BIOSPassword"
 
+
     switch ($CheckBIOSPassword.ExitCode) {
         0 { 
             $BIOSPasswordSet = $true
@@ -126,7 +145,7 @@ $CheckBIOSPassword=Start-Process $DellCommandConfigureExePath -wait -PassThru -A
         }
         240 { 
             $BIOSPasswordSet = $false
-            debugmsg "No BIOS-password was set."
+            debugmsg "No BIOS-password was set - skipped removing BIOS-password."
         }
     }
 
@@ -144,16 +163,37 @@ if( $bitlockerStatus -eq "On") {
 }
 
 
-# Import .xml settings file
-#start /wait "C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe" /import /policy C:\ProgramData\Dell\CommandUpdate\MySettings.xml
-#if %ERRORLEVEL% == 0 goto RUNDCUelse goto QUITTASK
-#:RUNDCU
-#"C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe" /log C:\ProgramData\Dell\DCU.log/silent
-#:QUITTASK
-#exit /b %ERRORLEVEL%
+# Import Settings for Dell Update Command
+$DCUImport=Start-Process $DellCommandUpdateExePath -wait -PassThru -ArgumentList "/import /policy .\lhind_ol_settings.xml"
+if ($DCUImport.ExitCode -eq 0) {
+    debugmsg "Dell Command Update imported settings via xml-file successfully"
+} else {
+    endscript 11007 "Dell Command Update could not import settings-xml-file"
+}
 
+# Start patching
+$DCUPatching=Start-Process $DellCommandUpdateExePath -WindowStyle hidden -wait -PassThru -ArgumentList "/silent /log $env:Temp\Dell_Command_Update_Patchlogs_$(get-date -f yyyy.MM.dd_H-m)"
 
-# start patch-process
-# re-set bios-password if it was enabled before
+switch ( $DCUPatching.ExitCode ) {
+    0 {
+        endscript 0 "Successfully patched this system."
+    }
+    1 {
+        endscript 1 "Reboot requiered"
+    }
+    2 {
+        endscript 2 "Fatal error during patch-process - Check $($env:Temp) for log files."
+    }
+    3 {
+        endscript 3 "Error during patch-process - Check $($env:Temp) for log files."
+    }
+    4 {
+        endscript 4 "Dell Update Command detected an invalid system and stopped."
+    }
+    5 {
+        endscript 5 "Reboot and scan requiered."
+    }
+}
+
 # give returncode to empirum agent
 # insert all the debug-messages (debugmsg)

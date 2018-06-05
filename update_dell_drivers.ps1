@@ -1,10 +1,12 @@
-# Written by Sven Falk - began first of june 2018
-# Description: This script will search for the programs 'Dell Command | Update' and 'Dell Command | Control'. If found it will use them to
-# update all available drivers. This will include BIOS and Firmware-Settings, which requires temporary disabled bitlocker and BIOS-Passwords.
-# ------------------------------------------------------- Define environment -------------------------------------------------------
-# Param has to be the first line!
-# Defines the parameters which are given by calling this script:
-# e.g.: .\update_dell_drivers.ps1 -debug 1
+<#
+ Written by Sven Falk - began first of june 2018
+ Description: This script will search for the programs 'Dell Command | Update' and 'Dell Command | Control'. If found it will use them to
+ update all available drivers. This will include BIOS and Firmware-Settings, which requires temporary disabled bitlocker and BIOS-Passwords.
+ ------------------------------------------------------- Define environment -------------------------------------------------------
+ Param has to be the first line!
+ Defines the parameters which are given by calling this script:
+ e.g.: .\update_dell_drivers.ps1 -debug 1
+#>
 param (
     [int]$debug = 1,
     [string]$OutputFileLocation = "$env:Temp\update_dell_drivers_$(get-date -f yyyy.MM.dd-H.m).log",
@@ -18,20 +20,28 @@ $DellCommandUpdateExePath = "C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.e
 $DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X86_64\cctk.exe"
 
 
-# ---- Exit Codes ----
-# Setup-routines will exit with their own exit-codes.
-# Define some custom exit-codes for this script.
-#    0 = "Successfully patched this system."
-#11000 = "This script ran not on a Dell system - exited without any action"
-#11001 = "Dell Command | Update software not found - exited without any action"
-#11002 = "Dell Command | Update software found but .exe could not be found in defined Path $DellCommandUpdateExePath"
-#11003 = "Dell Command | Configure software not found - exited without any action"
-#11004 = "Dell Command | Configure software found but .exe could not be found in defined Path $DellCommandConfigureExePath"
-#11005 = "BIOS is password protected but this script got the wrong password. Exiting now without actions."
-#11006 = "Bitlocker is activated and could not be paused."
-#11007 = "Dell Command Update could not import settings-xml-file"
-#11010 = "Unknown result of Dell Command | Update patching."
-#11020 = "Could not re-set the BIOS-password. Please check the client!"
+<#
+ ---- Exit Codes ----
+ These are the codes from Dell Command | Update
+     0 = "Successfully patched this system."
+     1 = "Reboot requiered"
+     2 = "Fatal error during patch-process - Check $($env:Temp) for log files."
+     3 = "Error during patch-process - Check $($env:Temp) for log files."
+     4 = "Dell Update Command detected an invalid system and stopped."
+     5 = "Reboot and scan required."
+
+ Define some custom exit-codes for this script.
+ 11000 = "This script ran not on a Dell system - exited without any action"
+ 11001 = "Dell Command | Update software not found - exited without any action"
+ 11002 = "Dell Command | Update software found but .exe could not be found in defined Path $DellCommandUpdateExePath"
+ 11003 = "Dell Command | Configure software not found - exited without any action"
+ 11004 = "Dell Command | Configure software found but .exe could not be found in defined Path $DellCommandConfigureExePath"
+ 11005 = "BIOS is password protected but this script got the wrong password. Exiting now without actions."
+ 11006 = "Bitlocker is activated and could not be paused."
+ 11007 = "Dell Command Update could not import settings-xml-file"
+ 11010 = "Unknown result of Dell Command | Update patching."
+ 11020 = "Could not re-set the BIOS-password. Please check the client!"
+#>
 
 # ----------------------------------------------------------------- Debugging -------------------------------------------------------------
 # Enable debugging (1) or disable (0)
@@ -52,7 +62,6 @@ if ($DebugMessages -eq "1") {
 
 
 # --------------------------------------------------------------- Functions --------------------------------------------------------------
-
 # End this script with message and errorlevel
 # call this function with "endscript errormessage errorlevel" 
 # e.g.: endscript 2 "The cake is a lie"
@@ -178,8 +187,8 @@ switch ( $DCUPatching.ExitCode ) {
     0 {
         endscript 0 "Successfully patched this system."
     }
-    1 {
-        endscript 1 "Reboot requiered"
+    1 { 
+        endscript 1 "Successfully patched this system. Reboot requiered."
     }
     2 {
         endscript 2 "Fatal error during patch-process - Check $($env:Temp) for log files."
@@ -191,7 +200,7 @@ switch ( $DCUPatching.ExitCode ) {
         endscript 4 "Dell Update Command detected an invalid system and stopped."
     }
     5 {
-        endscript 5 "Reboot and scan requiered."
+        endscript 5 "Successfully patched this system. Reboot and scan required."
     }
 }
 

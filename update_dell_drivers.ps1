@@ -30,7 +30,7 @@ $DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X8
 #11005 = "BIOS is password protected but this script got the wrong password. Exiting now without actions."
 #11006 = "Bitlocker is activated and could not be paused."
 #11007 = "Dell Command Update could not import settings-xml-file"
-#11100 = ""
+#11010 = "Unknown result of Dell Command | Update patching."
 #11020 = "Could not re-set the BIOS-password. Please check the client!"
 
 # ----------------------------------------------------------------- Debugging -------------------------------------------------------------
@@ -57,16 +57,18 @@ if ($DebugMessages -eq "1") {
 # call this function with "endscript errormessage errorlevel" 
 # e.g.: endscript 2 "The cake is a lie"
 function endscript($exitcode, $msg) {
-    # Debug info:
+    # Define var $ecode as script-wide so it can be modified by other functions.
+    $script:ecode = $exitcode
     debugmsg $msg
     resetSettings
     if ($DebugMessages -eq "1") {Stop-Transcript}
-    exit $exitcode
+    debugmsg "Exiting with code $ecode"
+    exit $ecode
 }
 
 # This function is just for better readability of this script
 # Call it to give output to console and logfile
-# e.g.: debugmsg "This variable contains: $($CheckBIOSPassword.ExitCode)"
+# e.g.: debugmsg "The variable xyz contains: $($CheckBIOSPassword.ExitCode)"
 function debugmsg($dmsg) {
     if ($DebugMessages -eq "1") {Write-Host "$(get-date -f yyyy.MM.dd_H:m:s) - $dmsg"}
 }
@@ -79,13 +81,11 @@ function resetSettings {
         if ( $setBIOSPassword.ExitCode -eq "0" ) {
             debugmsg "Set BIOS-password successfully back to previous value."
         } else {
-            endscript 11020 "Could not re-set the BIOS-password. Please check the client!"
+            debugmsg "Could not re-set the BIOS-password. Please check the client! Exiting with two errorcodes!"
+            $script:ecode = "$script:ecode"+11020
         }
     }
 }
-
-
-
 
 # ------------------------------------------------------- End definition of environment ---------------------------------------------------
 
@@ -93,7 +93,8 @@ function resetSettings {
 
 # Check if this is a Dell system:
 if (Get-WmiObject win32_SystemEnclosure -Filter: "Manufacturer LIKE 'Dell Inc.'") { 
-    $isDellSystem = $true 
+    $isDellSystem = $true
+    debugmsg "This system is identified as Dell-system."
     } else { 
     $manufacturer = $(Get-WmiObject win32_SystemEnclosure | Select-Object Manufacturer)
     endscript 11000 "This system could not be indentified as Dell system - Found manufacturer: $manufacturer" 
@@ -134,7 +135,6 @@ $bitlockerStatus=$($BLinfo.ProtectionStatus)
 # Check if BIOS-Password is set
 $CheckBIOSPassword=Start-Process $DellCommandConfigureExePath -wait -PassThru -ArgumentList "--setuppwd= --valsetuppwd $BIOSPassword"
 
-
     switch ($CheckBIOSPassword.ExitCode) {
         0 { 
             $BIOSPasswordSet = $true
@@ -149,7 +149,7 @@ $CheckBIOSPassword=Start-Process $DellCommandConfigureExePath -wait -PassThru -A
         }
     }
 
-# --------------------------------------------------------------------------- Do Stuff
+# --------------------------------------------------------------- Tasks -------------------------------------------------------------------
 # Pause bitlocker if enabled
 if( $bitlockerStatus -eq "On") {
     debugmsg "Bitlocker is activated - pausing it until next reboot."
@@ -162,18 +162,18 @@ if( $bitlockerStatus -eq "On") {
             }
 }
 
-
 # Import Settings for Dell Update Command
 $DCUImport=Start-Process $DellCommandUpdateExePath -wait -PassThru -ArgumentList "/import /policy .\lhind_ol_settings.xml"
 if ($DCUImport.ExitCode -eq 0) {
-    debugmsg "Dell Command Update imported settings via xml-file successfully"
+    debugmsg "Dell Command Update imported settings via xml-file successfully."
 } else {
-    endscript 11007 "Dell Command Update could not import settings-xml-file"
+    endscript 11007 "Dell Command Update could not import settings-xml-file."
 }
 
 # Start patching
 $DCUPatching=Start-Process $DellCommandUpdateExePath -WindowStyle hidden -wait -PassThru -ArgumentList "/silent /log $env:Temp\Dell_Command_Update_Patchlogs_$(get-date -f yyyy.MM.dd_H-m)"
 
+# Interpret the returncode of patching-process:
 switch ( $DCUPatching.ExitCode ) {
     0 {
         endscript 0 "Successfully patched this system."
@@ -195,5 +195,4 @@ switch ( $DCUPatching.ExitCode ) {
     }
 }
 
-# give returncode to empirum agent
-# insert all the debug-messages (debugmsg)
+endscript 11010 "Unknown result of Dell Command | Update patching."

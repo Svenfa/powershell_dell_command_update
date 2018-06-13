@@ -146,6 +146,14 @@ if (Test-Path $DellCommandConfigureExePath) {
     endscript 11004 "Dell Command | Configure software found but .exe could not be found in defined Path $DellCommandConfigureExePath"
 }
 
+# Check if Dell Command | Update is running already and kill it:
+$checkForDCU = Get-Process dcu-cli.exe -ErrorAction SilentlyContinue
+if ( $checkForDCU -eq $null ) {
+    debugmsg "dcu-cli.exe is already running - Killing it."
+    Get-Process dcu-cli.exe | Stop-Process
+}
+
+
 # -------------------------------------------------------- Check security-settings --------------------------------------------------------
 
 # Check if Bitlocker is enabled on Systemdrive:

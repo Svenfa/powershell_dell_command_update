@@ -13,16 +13,14 @@ param (
     [string]$BIOSPassword = "secret"
 )
 
-
 # Environmentvariables:
 # Path to .exe files. 
 $DellCommandUpdateExePath = "C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe"
 $DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X86_64\cctk.exe"
 
-
 <#
  ---- Exit Codes ----
- These are the codes from Dell Command | Update
+ These are the codes for Dell Command | Update
      0 = "Successfully patched this system."
      1 = "Reboot requiered"
      2 = "Fatal error during patch-process - Check $($env:Temp) for log files."
@@ -39,6 +37,7 @@ $DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X8
  11005 = "BIOS is password protected but this script got the wrong password. Exiting now without actions."
  11006 = "Bitlocker is activated and could not be paused."
  11007 = "Dell Command Update could not import settings-xml-file"
+ 11008 = "Dell Command Update could not import reset-xml-file"
  11010 = "Unknown result of Dell Command | Update patching."
  11020 = "Could not re-set the BIOS-password. Please check the client!"
 #>
@@ -76,7 +75,7 @@ function endscript($exitcode, $msg) {
 }
 
 # This function is just for better readability of this script
-# Call it to give output to console and logfile
+# Call it to print output to console and logfile
 # e.g.: debugmsg "The variable xyz contains: $($CheckBIOSPassword.ExitCode)"
 function debugmsg($dmsg) {
     if ($DebugMessages -eq "1") {Write-Host "$(get-date -f yyyy.MM.dd_H:m:s) - $dmsg"}
@@ -94,6 +93,18 @@ function resetSettings {
             $script:ecode = "$script:ecode"+11020
         }
     }
+    if ( $DCUpolicyImported -eq $true ) {
+        debugmsg "Resetting Dell Update | Command Settings back to default."
+        # This is done to remove the password from 'Dell Update | Command' (local admin-users could read the password in the gui)
+        $DCUResetImport=Start-Process $DellCommandUpdateExePath -wait -PassThru -ArgumentList "/import /policy .\reset.xml"
+        if ($DCUResetImport.ExitCode -eq 0) {
+            debugmsg "Dell Command Update reset settings via xml-file successfully."
+        } else {
+            endscript 11007 "Dell Command Update could not import rest-xml-file."
+        }
+    }
+
+
 }
 
 # ------------------------------------------------------- End definition of environment ---------------------------------------------------
@@ -106,7 +117,7 @@ if (Get-WmiObject win32_SystemEnclosure -Filter: "Manufacturer LIKE 'Dell Inc.'"
     debugmsg "This system is identified as Dell-system."
     } else { 
     $manufacturer = $(Get-WmiObject win32_SystemEnclosure | Select-Object Manufacturer)
-    endscript 11000 "This system could not be indentified as Dell system - Found manufacturer: $manufacturer" 
+    endscript 11000 "This system could not be identified as Dell system - Found manufacturer: $manufacturer" 
 }
 
 # Check if 'Dell Command | Update' is installed:
@@ -175,11 +186,13 @@ if( $bitlockerStatus -eq "On") {
 $DCUImport=Start-Process $DellCommandUpdateExePath -wait -PassThru -ArgumentList "/import /policy .\lhind_ol_settings.xml"
 if ($DCUImport.ExitCode -eq 0) {
     debugmsg "Dell Command Update imported settings via xml-file successfully."
+    $DCUpolicyImported = $true
 } else {
     endscript 11007 "Dell Command Update could not import settings-xml-file."
 }
 
 # Start patching
+debugmsg "Starting Patchprocess silently. Logging into $env:Temp\Dell_Command_Update_Patchlogs_$(get-date -f yyyy.MM.dd_H-m)"
 $DCUPatching=Start-Process $DellCommandUpdateExePath -WindowStyle hidden -wait -PassThru -ArgumentList "/silent /log $env:Temp\Dell_Command_Update_Patchlogs_$(get-date -f yyyy.MM.dd_H-m)"
 
 # Interpret the returncode of patching-process:

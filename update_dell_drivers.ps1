@@ -123,23 +123,11 @@ if (Get-WmiObject win32_SystemEnclosure -Filter: "Manufacturer LIKE 'Dell Inc.'"
     endscript 11000 "This system could not be identified as Dell system - Found manufacturer: $manufacturer" 
 }
 
-# Check if 'Dell Command | Update' is installed:
-Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "*Dell Command | Update*"} | ForEach-Object -process { $isDellCommandUpdateInstalled = $true }
-if ($isDellCommandUpdateInstalled -eq $false) {
-    endscript 11001 "Dell Command | Update software not found - exited without any action"
-}
-
 # Check if the Dell Command | Update command-line exe-file exists:
 if (Test-Path $DellCommandUpdateExePath) {
     $foundDellCommandUpdateExe = $true
 } else {
     endscript 11002 "Dell Command | Update software found but .exe could not be found in defined Path $DellCommandUpdateExePath"
-}
-
-# Check if 'Dell Command | Configure' is installed:
-Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {$_.DisplayName -like "*Dell Command | Configure*"} | ForEach-Object -process { $isDellCommandConfigureInstalled = $true }
-if ($isDellCommandConfigureInstalled -eq $false) {
-    endscript 11003 "Dell Command | Configure software not found - exited without any action"
 }
 
 # Check if the Dell Command | Configure command-line exe-file exists:

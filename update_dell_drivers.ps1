@@ -10,13 +10,15 @@
 param (
     [int]$debug = 1,
     [string]$OutputFileLocation = "$env:Temp\update_dell_drivers_$(get-date -f yyyy.MM.dd-H.m).log",
-    [string]$BIOSPassword = "secret"
+    [string]$BIOSPassword = "-"
 )
 
 # Environmentvariables:
 # Path to .exe files. 
-$DellCommandUpdateExePath = "C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe"
-$DellCommandConfigureExePath = "C:\Program Files (x86)\Dell\Command Configure\X86_64\cctk.exe"
+$DellCommandUpdateFolder = "C:\Program Files (x86)\Dell\Command Update"
+$DellCommandConfigureFolder = "C:\Program Files (x86)\Dell\Command Configure\X86_64"
+$DellCommandUpdateExePath = "$DellCommandUpdateFolder\dcu-cli.exe"
+$DellCommandConfigureExePath = "$DellCommandConfigureFolder\cctk.exe"
 
 <#
  ---- Exit Codes ----
@@ -95,12 +97,13 @@ function resetSettings {
     }
     if ( $DCUpolicyImported -eq $true ) {
         debugmsg "Resetting Dell Update | Command Settings back to default."
-        # This is done to remove the password from 'Dell Update | Command' (local admin-users could read the password in the gui)
-        $DCUResetImport=Start-Process $DellCommandUpdateExePath -wait -PassThru -ArgumentList "/import /policy .\reset.xml"
+        # This is done to remove the password from 'Dell Command | Update' (otherwise local admin-users could read the password in the Dell | Command Update gui)
+        $DCUResetImport=Start-Process $DellCommandUpdateExePath -wait -PassThru -ArgumentList "/import /policy `"$DellCommandUpdateFolder`"\reset.xml"
         if ($DCUResetImport.ExitCode -eq 0) {
             debugmsg "Dell Command Update reset settings via xml-file successfully."
         } else {
-            endscript 11007 "Dell Command Update could not import rest-xml-file."
+            debugmsg "Dell Command Update could not import reset-xml-file."
+            $script:ecode = "$script:ecode"+11007
         }
     }
 
@@ -148,7 +151,7 @@ if (Test-Path $DellCommandConfigureExePath) {
 
 # Check if Dell Command | Update is running already and kill it:
 $checkForDCU = Get-Process dcu-cli.exe -ErrorAction SilentlyContinue
-if ( $checkForDCU -eq $null ) {
+if ( $checkForDCU -ne $null ) {
     debugmsg "dcu-cli.exe is already running - Killing it."
     Get-Process dcu-cli.exe | Stop-Process
 }
@@ -191,7 +194,7 @@ if( $bitlockerStatus -eq "On") {
 }
 
 # Import Settings for Dell Update Command
-$DCUImport=Start-Process $DellCommandUpdateExePath -wait -PassThru -ArgumentList "/import /policy .\lhind_ol_settings.xml"
+$DCUImport=Start-Process $DellCommandUpdateExePath -wait -PassThru -ArgumentList "/import /policy `"$DellCommandUpdateFolder`"\lhind_ol_settings.xml"
 if ($DCUImport.ExitCode -eq 0) {
     debugmsg "Dell Command Update imported settings via xml-file successfully."
     $DCUpolicyImported = $true
